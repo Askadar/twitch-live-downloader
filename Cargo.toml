@@ -1,0 +1,16 @@
+[package]
+name = "live-downloader"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+chrono = { version = "0.4.43", features = ["now", "serde"] }
+ezsockets = { version = "0.7.1", features = ["client", "native_client", "native-tls"] }
+futures = "0.3.31"
+reqwest = { version = "0.12.24", features = ["native-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tokio = { version = "1.48.0", features = ["full"] }
+twitch_api = { version = "0.7.2", features = ["eventsub"] }
+url = "2.5.8"
