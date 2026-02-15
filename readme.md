@@ -16,7 +16,7 @@ when all dependencies are preparred, configure execution params in config.json:
 ```
 details:
  - `clientId` and `clientSecret` are credentials you get from creating an app at https://dev.twitch.tv/console
- - `streamlinkToken` is the auth cookie from twitch site, you need it if you want to skip ads and have an account that either subbed to target channels or have site-wide turbo
+ - `streamlinkToken` is the auth cookie from twitch site, you need it if you want to skip ads and have an account that either subbed to target channels or have site-wide turbo; you can get one by running `document.cookie.split("; ").find(item=>item.startsWith("auth-token="))?.split("=")[1]` on twitch.tv when you're logged in
  - `broadcasters` is a list of channels you want to watch, currently limited to 5 (will be expanded to 10 and maybe unlimited in the future)
  - `root` is the full path to the folder you want to use to store records; downloader will create sub-folder within of channel login for relevant downloads
 
