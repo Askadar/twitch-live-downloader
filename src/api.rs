@@ -4,7 +4,9 @@ use reqwest::{self, Client, StatusCode, header};
 use serde_json::json;
 use twitch_api::eventsub::EventType;
 
-use crate::data::{Config, StreamData, StreamResponse, Token, UserData, UserResponse};
+use crate::data::{
+	Config, StreamData, StreamResponse, Token, UserData, UserResponse, ValidationResponse,
+};
 use crate::err::Error;
 
 pub struct Api {
@@ -88,7 +90,7 @@ impl Api {
 		Ok(token)
 	}
 
-	pub async fn validate(&self) -> Result<(), Error> {
+	pub async fn validate(&self) -> Result<ValidationResponse, Error> {
 		let req = self
 			.c
 			.get("https://id.twitch.tv/oauth2/validate")
@@ -103,7 +105,9 @@ impl Api {
 			return Err(Error::UnAuthorised);
 		}
 
-		Ok(())
+		let resp: ValidationResponse = serde_json::from_str(&text).unwrap();
+
+		Ok(resp)
 	}
 
 	pub async fn getStream(&self, login: &[&str]) -> Result<Vec<StreamData>, Error> {

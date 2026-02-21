@@ -14,9 +14,28 @@ use data::InternalMessage;
 use tokio::task::JoinHandle;
 use twitch_api::eventsub::EventType;
 
-use crate::data::Config;
+use crate::data::{Config, ValidationResponse};
 
-// http://127.0.0.1:8080/eventsub/subscriptions
+async fn validateAndRefreshToken(
+	api: &std::sync::Arc<tokio::sync::Mutex<api::Api>>,
+) -> Option<ValidationResponse> {
+	println!("[VLDT] [{}]", chrono::Utc::now());
+	let mut apilock = api.lock().await;
+	match apilock.validate().await {
+		Err(err) => match err {
+			crate::err::Error::UnAuthorised => {
+				let token = apilock.refreshToken().await.unwrap();
+				token::writeRefreshToken(&token).await.unwrap();
+				None
+			}
+			_ => {
+				println!("not handling err {:?} for validation", err);
+				None
+			}
+		},
+		Ok(resp) => Some(resp),
+	}
+}
 
 #[tokio::main]
 async fn main() {
@@ -31,12 +50,10 @@ async fn main() {
 
 	let rootPath = PathBuf::from(&config.root);
 
-	let api = std::sync::Arc::new(tokio::sync::Mutex::new(api::Api::init(
-		token.clone(),
-		&config,
-	)));
+	let api: std::sync::Arc<tokio::sync::Mutex<api::Api>> = std::sync::Arc::new(
+		tokio::sync::Mutex::new(api::Api::init(token.clone(), &config)),
+	);
 
-	// let config = ClientConfig::new("ws://127.0.0.1:8080/ws").bearer(token.access_token);
 	let mut socketUrl = "wss://eventsub.wss.twitch.tv/ws";
 	if let Some(s) = &config.socketUrl {
 		socketUrl = s.as_str();
@@ -63,34 +80,19 @@ async fn main() {
 		tokio::spawn(async move { future.await.inspect_err(|e| println!("e {:?}", e)).unwrap() });
 	let validateApi = api.clone();
 	let _validateThread = tokio::spawn(async move {
+		let mut prevResult: Option<ValidationResponse> = None;
 		loop {
-			tokio::time::sleep(Duration::from_secs(3600)).await;
-
-			println!("[VLDT] [{}]", chrono::Utc::now());
-			let mut apilock = validateApi.lock().await;
-			if let Err(err) = apilock.validate().await {
-				match err {
-					crate::err::Error::UnAuthorised => {
-						let token = apilock.refreshToken().await.unwrap();
-						token::writeRefreshToken(&token).await.unwrap()
-					}
-					_ => println!("not handling err {:?} for validation", err),
-				}
+			let mut duration = Duration::from_secs(3600);
+			if let Some(val) = prevResult {
+				duration = Duration::from_secs(std::cmp::min(val.expires_in + 1, 3600));
 			}
+			tokio::time::sleep(duration).await;
+
+			prevResult = validateAndRefreshToken(&validateApi).await
 		}
 	});
 
-	let mut validateLock = api.lock().await;
-	if let Err(err) = validateLock.validate().await {
-		match err {
-			crate::err::Error::UnAuthorised => {
-				let token = validateLock.refreshToken().await.unwrap();
-				token::writeRefreshToken(&token).await.unwrap()
-			}
-			_ => println!("not handling err {:?} for validation", err),
-		}
-	}
-	drop(validateLock);
+	validateAndRefreshToken(&api.clone()).await;
 
 	// would prolly want an arc and or mutex on this
 	let mut pool: Vec<JoinHandle<()>> = Vec::new();
@@ -134,13 +136,23 @@ async fn main() {
 			.join("; ")
 	);
 
+	// !TODO
+	// bitconnect!
+	// reconnect is still mildly broken
+	//   more logging added, need verification what went wrong
+	// also need to add token refresh on api fails, kinda tricky unfortunately
+	//   hacked with checking expiration and scheduling next validation right after expiration
+	// actually handle all the hanging threads + design overall concurrency system
+	//   likely main thread blocking on resolving of monitor (message handling), and misc threads (socket, validator, etc)
+
 	loop {
 		use InternalMessage::{Debug, DontHandle, Init, Reconnect, StreamLive, StreamStop};
 
 		match rx.recv().await.unwrap() {
 			Init { session } => {
-				println!("[INIT] [{}] session: {:?}", chrono::Utc::now(), session);
 				if let Some((newHandle, newSocketThread)) = newHandles {
+					println!("[RNIT] [{}] session: {:?}", chrono::Utc::now(), session);
+
 					handle
 						.close(Some(CloseFrame {
 							code: ezsockets::CloseCode::Normal,
@@ -153,6 +165,8 @@ async fn main() {
 					handle = newHandle;
 					newHandles = None;
 				} else {
+					println!("[INIT] [{}] session: {:?}", chrono::Utc::now(), session);
+
 					let futures = users
 						.iter()
 						.map(|user| async {

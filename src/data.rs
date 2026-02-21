@@ -51,6 +51,12 @@ pub struct StreamData {
 pub struct StreamResponse {
 	pub data: Vec<StreamData>,
 }
+#[derive(serde::Deserialize, Debug)]
+pub struct ValidationResponse {
+	pub expires_in: u64,
+	// login: String,
+	// client_id: String,
+}
 
 #[derive(Debug, Clone)]
 pub enum InternalMessage {
