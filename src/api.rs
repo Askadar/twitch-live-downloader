@@ -101,7 +101,7 @@ impl Api {
 		let text = resp.text().await.unwrap();
 
 		if status == StatusCode::UNAUTHORIZED {
-			println!("[VLDF] [{}] {text}", chrono::Utc::now());
+			println!("[VLDF] [{}] {}", chrono::Utc::now(), text.trim());
 			return Err(Error::UnAuthorised);
 		}
 
