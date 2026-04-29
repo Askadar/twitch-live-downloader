@@ -1,23 +1,22 @@
-use async_trait::async_trait;
+use log::warn;
 use twitch_api::eventsub::{Event, EventsubWebsocketData, Message, Payload};
 
-use crate::data::InternalMessage;
+use crate::{data::InternalMessage, err::Error};
 
 pub struct Client {
 	pub tx: tokio::sync::broadcast::Sender<InternalMessage>,
 	// pub rx: tokio::sync::broadcast::Receiver<InternalMessage>,
 }
 
-#[async_trait]
-impl ezsockets::ClientExt for Client {
-	type Call = ();
+impl Client {
+	pub fn processFrame(&self, data: tungstenite::Utf8Bytes) -> Result<(), Error> {
+		if let Err(detail) = twitch_api::eventsub::Event::parse_websocket(&data) {
+			warn!("unexpected socket error {}", detail);
+			return Ok(());
+		};
+		let frame = twitch_api::eventsub::Event::parse_websocket(&data).unwrap();
 
-	async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> {
-		// twitch_api::eventsub::Event::parse_websocket
-		// println!("[msgA] {} {:?}", chrono::Utc::now(), text);
-
-		let t = twitch_api::eventsub::Event::parse_websocket(&text).unwrap();
-		match t {
+		match frame {
 			EventsubWebsocketData::Notification { payload, .. } => match payload {
 				Event::StreamOnlineV1(Payload {
 					message: Message::Notification(data),
@@ -42,13 +41,15 @@ impl ezsockets::ClientExt for Client {
 					..
 				}) => self
 					.tx
-					.send(InternalMessage::Debug {
-						info: format!("{}: {}", d.chatter_user_name, d.message.text),
+					.send(InternalMessage::Chat {
+						msg: format!("{}: {}", d.chatter_user_name, d.message.text),
+						channel: d.broadcaster_user_login.to_string(),
 					})
 					.unwrap_or_else(|_o| {
-						println!("failed to broadcast unhandled message");
+						println!("failed to broadcast chat message");
 						return 0;
 					}),
+
 				_ => self
 					.tx
 					.send(InternalMessage::DontHandle)
@@ -85,19 +86,6 @@ impl ezsockets::ClientExt for Client {
 				}),
 		};
 
-		Ok(())
-	}
-
-	async fn on_binary(&mut self, _bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> {
-		self
-			.tx
-			.send(InternalMessage::DontHandle)
-			.expect("ws failed to broadcast on binary");
-		Ok(())
-	}
-
-	async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
-		let () = call;
 		Ok(())
 	}
 }

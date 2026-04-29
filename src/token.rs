@@ -34,7 +34,7 @@ pub async fn getDeviceToken(clientId: &str, clientSecret: &str) -> Result<Token,
 			.unwrap(),
 	)
 	.unwrap();
-	println!("{:?}", &deviceResp);
+	log::trace!("[DVCE] {:?}", &deviceResp);
 	println!("follow the link to auth: {}", &deviceResp.verification_uri);
 
 	loop {
@@ -53,7 +53,7 @@ pub async fn getDeviceToken(clientId: &str, clientSecret: &str) -> Result<Token,
 
 		let result = match authClient.execute(deviceConfirm).await {
 			Err(e) => {
-				println!("err fetching auth {:?}", e);
+				log::error!("err fetching auth {:?}", e);
 				None
 			}
 			Ok(r) => match r.status() {

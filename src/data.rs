@@ -1,21 +1,23 @@
 use serde;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct Token {
-	pub access_token: String,
-	pub refresh_token: String,
-	pub expires_in: u32,
-}
-
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {
 	pub clientId: String,
 	pub clientSecret: String,
 	pub broadcasters: Vec<String>,
+	pub account: String,
 	pub streamlinkToken: String,
 	pub root: String,
+	pub chatRoot: Option<String>,
 	pub socketUrl: Option<String>,
 	pub baseUrl: Option<String>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct Token {
+	pub access_token: String,
+	pub refresh_token: String,
+	pub expires_in: u32,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -63,6 +65,7 @@ pub enum InternalMessage {
 	Init { session: String },
 	StreamLive { channel: String },
 	StreamStop { channel: String },
+	Chat { msg: String, channel: String },
 
 	Debug { info: String },
 	Reconnect { session: String, url: String },

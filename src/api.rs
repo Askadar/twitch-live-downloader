@@ -77,7 +77,7 @@ impl Api {
 		let resp = authClient.execute(req).await.expect("failed token refresh");
 		let status = resp.status();
 
-		println!("[TKNR] [{}] {}", chrono::Utc::now(), &status);
+		log::trace!("[TKNR] {}", &status);
 		if status == StatusCode::UNAUTHORIZED {
 			return Err(Error::ExpiredAuth);
 		}
@@ -101,7 +101,7 @@ impl Api {
 		let text = resp.text().await.unwrap();
 
 		if status == StatusCode::UNAUTHORIZED {
-			println!("[VLDF] [{}] {}", chrono::Utc::now(), text.trim());
+			log::warn!("[VLDF] {}", text.trim());
 			return Err(Error::UnAuthorised);
 		}
 
@@ -136,10 +136,10 @@ impl Api {
 		Ok(json.data)
 	}
 
-	pub async fn getUsers(&self, login: &[String]) -> Result<Vec<UserData>, Error> {
+	pub async fn getUsers(&self, login: &[&str]) -> Result<Vec<UserData>, Error> {
 		let logins = login
 			.iter()
-			.map(|login| ("login", login.as_str()))
+			.map(|login| ("login", *login))
 			.collect::<Vec<(&str, &str)>>();
 		let getLogin = self
 			.c
@@ -215,16 +215,28 @@ impl Api {
 		let status = resp.status();
 		let text = resp.text().await.unwrap();
 		if status != StatusCode::ACCEPTED {
-			println!("[subF] [{}] {} {:?}", chrono::Utc::now(), status, text);
+			log::error!("[subF] {} {:?}", status, text);
 		} else {
-			println!("[SUBK] [{}] {}", chrono::Utc::now(), condition);
+			log::info!("[SUBK] {} {}", eType, condition);
 		}
 
 		Ok(())
 	}
+
+	pub async fn getSubscribtions(&self) -> Result<(), Error> {
+		let sub = self
+			.c
+			.get(format!("{}/eventsub/subscriptions", self.base))
+			.build()
+			.unwrap();
+		let resp = self.c.execute(sub).await.unwrap();
+		let status = resp.status();
+		let text = resp.text().await.unwrap();
+		log::info!("[SUBL] {} {:?}", status, text);
+
+		Ok(())
+	}
 }
-// https://api.twitch.tv/helix/eventsub/subscriptions
-// http://127.0.0.1:8080/eventsub/subscriptions
 
 pub async fn try_request<T, E, Fut, F: FnMut() -> Fut>(mut f: F, retries: i32) -> Result<T, E>
 where
