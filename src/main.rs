@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use futures::StreamExt;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use std::{
 	fs,
 	path::PathBuf,
@@ -169,39 +169,13 @@ async fn main() {
 		tokio::sync::Mutex::new(api::Api::init(token.clone(), &config)),
 	);
 
-	let mut socketUrl = "wss://eventsub.wss.twitch.tv/ws".to_string();
+	let mut socketUrl = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=300".to_string();
 	if let Some(s) = &config.socketUrl {
 		socketUrl = s.clone();
 	}
 
 	let socket = Arc::new(socket::Client { tx: wsTx });
-
-	let tsSocket = socket.clone();
 	let mut mainLock = threadPool.lock().await;
-	mainLock.push(Thread::new(
-		ThreadType::MainSocket,
-		tokio::spawn(async move {
-			let (tungstenSocketStream, _connectionResponse) = tokio_tungstenite::connect_async(socketUrl)
-				.await
-				.expect("WebSocket connection failed to initialise");
-			tungstenSocketStream
-				.for_each(|msg| async {
-					let t = msg.and_then(|msg| msg.into_text());
-					match t {
-						Ok(text) => {
-							log::trace!("[MSGA] {:?}", text);
-							tsSocket.processFrame(text).unwrap();
-						}
-
-						Err(detail) => {
-							error!("{}", detail);
-							()
-						}
-					}
-				})
-				.await
-		}),
-	));
 
 	let validateApi = api.clone();
 	mainLock.push(Thread::new(
@@ -265,6 +239,61 @@ async fn main() {
 		});
 
 	let switch: Arc<Mutex<Option<ThreadSwap>>> = Arc::new(Mutex::new(None));
+
+	let tsSocket = socket.clone();
+	mainLock.push(Thread::new(
+		ThreadType::MainSocket,
+		tokio::spawn(async move {
+			use tungstenite::Message;
+			let (tungstenSocketStream, _connectionResponse) = tokio_tungstenite::connect_async(socketUrl)
+				.await
+				.expect("WebSocket connection failed to initialise");
+			tungstenSocketStream
+				.for_each(|msg| async {
+					// let messageType = determineType(&msg);
+					let t: Result<Option<tungstenite::Utf8Bytes>, tungstenite::Error> =
+						msg.map(|msg| match msg {
+							Message::Text(val) => Some(val),
+							Message::Frame(val) => {
+								info!("unexpected frame on socket: {:?}", val);
+								None
+							}
+							Message::Binary(bin) => {
+								trace!("received binary on websocket: {:?}", bin);
+								None
+							}
+							Message::Ping(val) => {
+								trace!("ping: {:?}", val);
+								None
+							}
+							Message::Pong(val) => {
+								trace!("pong: {:?}", val);
+								None
+							}
+							Message::Close(val) => {
+								warn!("got close frame: {:?}", val);
+								None
+							}
+						});
+
+					match t {
+						Ok(val) => match val {
+							Some(text) => {
+								log::trace!("[MSGA] {:?}", text);
+								tsSocket.processFrame(text).unwrap();
+							}
+							None => {
+								// noop
+							}
+						},
+						Err(detail) => {
+							error!("{}", detail);
+						}
+					}
+				})
+				.await
+		}),
+	));
 	drop(mainLock);
 
 	debug!(

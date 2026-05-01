@@ -1,4 +1,4 @@
-use log::warn;
+use log::{error, trace, warn};
 use twitch_api::eventsub::{Event, EventsubWebsocketData, Message, Payload};
 
 use crate::{data::InternalMessage, err::Error};
@@ -17,7 +17,10 @@ impl Client {
 		let frame = twitch_api::eventsub::Event::parse_websocket(&data).unwrap();
 
 		match frame {
-			EventsubWebsocketData::Notification { payload, .. } => match payload {
+			EventsubWebsocketData::Notification {
+				payload,
+				metadata: _metadata,
+			} => match payload {
 				Event::StreamOnlineV1(Payload {
 					message: Message::Notification(data),
 					..
@@ -26,7 +29,7 @@ impl Client {
 					.send(InternalMessage::StreamLive {
 						channel: data.broadcaster_user_login.to_string(),
 					})
-					.expect("failed to broadcast stream live"),
+					.map_err(|detail| error!("failed to broadcast stream live: {detail}")),
 				Event::StreamOfflineV1(Payload {
 					message: Message::Notification(data),
 					..
@@ -35,7 +38,7 @@ impl Client {
 					.send(InternalMessage::StreamStop {
 						channel: data.broadcaster_user_login.to_string(),
 					})
-					.expect("failed to broadcast stream live"),
+					.map_err(|detail| error!("failed to broadcast stream live: {detail}")),
 				Event::ChannelChatMessageV1(Payload {
 					message: Message::Notification(d),
 					..
@@ -45,18 +48,12 @@ impl Client {
 						msg: format!("{}: {}", d.chatter_user_name, d.message.text),
 						channel: d.broadcaster_user_login.to_string(),
 					})
-					.unwrap_or_else(|_o| {
-						println!("failed to broadcast chat message");
-						return 0;
-					}),
+					.map_err(|detail| error!("failed to broadcast chat message: {detail}")),
 
 				_ => self
 					.tx
 					.send(InternalMessage::DontHandle)
-					.unwrap_or_else(|_o| {
-						println!("failed to broadcast unhandled message");
-						return 0;
-					}),
+					.map_err(|detail| error!("failed to broadcast unhandled message: {detail}")),
 			},
 
 			EventsubWebsocketData::Welcome { payload, .. } => self
@@ -64,7 +61,7 @@ impl Client {
 				.send(InternalMessage::Init {
 					session: payload.session.id.to_string(),
 				})
-				.expect("Failed to broadcast welcome message"),
+				.map_err(|detail| error!("failed to broadcast welcome message: {detail}")),
 			EventsubWebsocketData::Reconnect { payload, .. } => self
 				.tx
 				.send(InternalMessage::Reconnect {
@@ -75,16 +72,18 @@ impl Client {
 						.expect("failed to receiv good reconnect url")
 						.into(),
 				})
-				.expect("failed to broadcast reconnect message"),
+				.map_err(|detail| error!("failed to broadcast reconnect message: {detail}")),
+			EventsubWebsocketData::Keepalive { metadata, payload } => {
+				trace!("keepalive: {:?} {:?}", payload, metadata);
+				Ok(0)
+			}
 
 			_ => self
 				.tx
 				.send(InternalMessage::DontHandle)
-				.unwrap_or_else(|_o| {
-					println!("failed to broadcast unhandled message");
-					return 0;
-				}),
-		};
+				.map_err(|detail| error!("failed to broadcast unhandled message: {detail}")),
+		}
+		.ok();
 
 		Ok(())
 	}
