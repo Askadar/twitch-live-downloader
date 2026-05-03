@@ -1,0 +1,9 @@
+services:
+  ld:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./token.json:/app/token.json
+      - ./downloads:/downloads
+      - ./chat:/chat
