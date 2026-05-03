@@ -1,6 +1,26 @@
-/target
+# VSCode
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+!*.code-workspace
+
+# MacOS
+.DS_Store
+__MACOSX/
+._*
+
+# Rust
+debug/
+target/
+
+# Misc
+*.log
+makefile
+
+# App
+/chat
+/downloads
 token.json
 config.json
-makefile
-chat
-*.log
