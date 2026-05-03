@@ -3,7 +3,8 @@ RUN cargo install cargo-chef --locked
 WORKDIR /app
 
 FROM chef AS planner
-COPY . .
+COPY src ./src
+COPY Cargo.toml Cargo.lock ./
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
@@ -14,7 +15,8 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=app-target,target=/app/target \
     cargo chef cook --release --recipe-path recipe.json
 
-COPY . .
+COPY src ./src
+COPY Cargo.toml Cargo.lock ./
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=app-target,target=/app/target \
